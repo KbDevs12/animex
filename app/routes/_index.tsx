@@ -1,87 +1,83 @@
+import { LoaderFunction } from "@remix-run/node";
 import { useLoaderData, useSearchParams } from "@remix-run/react";
 import { MetaFunction } from "@remix-run/react";
 import { useState, useEffect } from "react";
+import dataFetcher from "~/libs/dataFetcher.server";
 import { AnimeLink, PaginationLink } from "~/interfaces/interfaces";
 import CardList from "~/components/CardList";
 import Pagination from "~/components/Pagination";
+import { baseUrl } from "~/libs/dataFetcher.server";
 import HeaderComps from "~/components/HeadTitle";
 
 export const meta: MetaFunction = () => {
   return [
     { title: "Home | AnimeX" },
-    { name: "description", content: "unofficial anime streaming website!" },
+    { name: "description", content: "unofficial anime streamig website!" },
   ];
 };
 
-async function fetchAnimeData(page: string) {
-  const response = await fetch(`/api/anime?page=${page}`);
-  if (!response.ok) throw new Error("Failed to fetch anime data");
-  return response.json();
-}
+export let loader: LoaderFunction = async ({ request }) => {
+  const url = new URL(request.url);
+  const page = url.searchParams.get("page") || "1";
+  const fetcher = new dataFetcher();
 
-async function fetchMovieData() {
-  const response = await fetch(`/api/movies`);
-  if (!response.ok) throw new Error("Failed to fetch movie data");
-  return response.json();
-}
+  const { animeLinks, pagination } = await fetcher.aniFetch(
+    page === "1" ? undefined : `${baseUrl}/page/${page}`
+  );
+  const movie: AnimeLink[] = await fetcher.MovieList();
+
+  return { animeLinks, movie, pagination };
+};
 
 export default function Index() {
-  const [animeLinks, setAnimeLinks] = useState<AnimeLink[]>([]);
-  const [movie, setMovie] = useState<AnimeLink[]>([]);
-  const [pagination, setPagination] = useState<{
-    links: PaginationLink[];
-    currentPage: number;
-    totalPages: number;
-  } | null>(null);
+  const { animeLinks, movie, pagination } = useLoaderData<{
+    animeLinks: AnimeLink[];
+    movie: AnimeLink[];
+    pagination: {
+      links: PaginationLink[];
+      currentPage: number;
+      totalPages: number;
+    };
+  }>();
+
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
-  const page = searchParams.get("page") || "1";
 
   useEffect(() => {
-    setLoading(true);
+    setTimeout(() => setLoading(false), 1000);
+  }, []);
 
-    async function fetchData() {
-      try {
-        const [animeData, movieData] = await Promise.all([
-          fetchAnimeData(page),
-          fetchMovieData(),
-        ]);
-
-        setAnimeLinks(animeData.animeLinks);
-        setPagination(animeData.pagination);
-        setMovie(movieData);
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setLoading(false);
-      }
+  useEffect(() => {
+    if (animeLinks.length > 0) {
+      setLoading(false);
     }
-
-    fetchData();
-  }, [page]);
+  }, [animeLinks]);
 
   const handlePageChange = (page: number) => {
+    setLoading(true);
     setSearchParams({ page: page.toString() });
   };
 
   return (
-    <main className="flex flex-col items-center justify-center p-4">
-      <HeaderComps title="Anime Terbaru" />
-      <div className="w-full my-4">
-        <CardList data={animeLinks} loading={loading} />
-        {!loading && pagination && (
-          <Pagination
-            currentPage={pagination.currentPage}
-            totalPages={pagination.totalPages}
-            onPageChange={handlePageChange}
-            links={pagination.links}
-          />
-        )}
-      </div>
-      <HeaderComps title="Movie" link="/movie" />
-      <div className="w-full my-4">
-        <CardList data={movie} loading={loading} />
-      </div>
-    </main>
+    <>
+      <main className="flex flex-col items-center justify-center p-4">
+        <HeaderComps title="Anime Terbaru" />
+        <div className="w-full my-4">
+          <CardList data={animeLinks} loading={loading} />
+          {!loading && (
+            <Pagination
+              currentPage={pagination.currentPage}
+              totalPages={pagination.totalPages}
+              onPageChange={handlePageChange}
+              links={pagination.links}
+            />
+          )}
+        </div>
+        <HeaderComps title="Movie" link="/movie" />
+        <div className="w-full my-4">
+          <CardList data={movie} loading={loading} />
+        </div>
+      </main>
+    </>
   );
 }
